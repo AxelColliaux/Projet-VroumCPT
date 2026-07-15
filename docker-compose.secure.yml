@@ -1,0 +1,181 @@
+services:
+  kafka:
+    image: bitnami/kafka:latest
+    container_name: vroumcpt-kafka-secure
+    environment:
+      KAFKA_CFG_NODE_ID: 1
+      KAFKA_CFG_PROCESS_ROLES: broker,controller
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+
+      # Listeners: internal SASL_SSL for clients, CONTROLLER for KRaft consensus
+      KAFKA_CFG_LISTENERS: SASL_SSL://:9092,CONTROLLER://:9093
+      KAFKA_CFG_ADVERTISED_LISTENERS: SASL_SSL://kafka:9092
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: SASL_SSL:SASL_SSL,CONTROLLER:PLAINTEXT
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: SASL_SSL
+
+      # SASL
+      KAFKA_CFG_SASL_ENABLED_MECHANISMS: SCRAM-SHA-256
+      KAFKA_CFG_SASL_MECHANISM_INTER_BROKER_PROTOCOL: SCRAM-SHA-256
+
+      # SSL
+      KAFKA_TLS_TYPE: JKS
+      KAFKA_CERTIFICATE_PASSWORD: vroumcpt-cert-password
+
+      # Pre-create SCRAM users (broker user for inter-broker, app users)
+      KAFKA_CFG_SUPER_USERS: User:admin
+      KAFKA_CLIENT_USERS: admin,generator,spark
+      KAFKA_CLIENT_PASSWORDS: admin-secret,generator-secret,spark-secret
+
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "false"
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafka_secure_data:/bitnami/kafka
+      - ./config/ssl:/bitnami/kafka/config/ssl:ro
+    healthcheck:
+      test: >
+        kafka-topics.sh
+        --bootstrap-server localhost:9092
+        --command-config /bitnami/kafka/config/ssl/client-admin.properties
+        --list
+      interval: 15s
+      timeout: 10s
+      retries: 12
+
+  kafka-init:
+    image: bitnami/kafka:latest
+    container_name: vroumcpt-kafka-init-secure
+    depends_on:
+      kafka:
+        condition: service_healthy
+    volumes:
+      - ./config/ssl:/opt/ssl:ro
+    entrypoint: ["/bin/bash", "-c"]
+    command: |
+      "
+      kafka-topics.sh \
+        --bootstrap-server kafka:9092 \
+        --command-config /opt/ssl/client-admin.properties \
+        --create --if-not-exists \
+        --topic vehicle-states --partitions 3 --replication-factor 1
+
+      kafka-topics.sh \
+        --bootstrap-server kafka:9092 \
+        --command-config /opt/ssl/client-admin.properties \
+        --create --if-not-exists \
+        --topic alerts --partitions 1 --replication-factor 1
+
+      # Grant generator write access to vehicle-states
+      kafka-acls.sh \
+        --bootstrap-server kafka:9092 \
+        --command-config /opt/ssl/client-admin.properties \
+        --add --allow-principal User:generator \
+        --producer --topic vehicle-states
+
+      # Grant spark read from vehicle-states, write to alerts
+      kafka-acls.sh \
+        --bootstrap-server kafka:9092 \
+        --command-config /opt/ssl/client-admin.properties \
+        --add --allow-principal User:spark \
+        --consumer --topic vehicle-states --group spark-streaming
+
+      kafka-acls.sh \
+        --bootstrap-server kafka:9092 \
+        --command-config /opt/ssl/client-admin.properties \
+        --add --allow-principal User:spark \
+        --producer --topic alerts
+
+      echo 'Topics and ACLs configured.'
+      "
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: vroumcpt-kafka-ui-secure
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: vroumcpt-secure
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      KAFKA_CLUSTERS_0_PROPERTIES_SECURITY_PROTOCOL: SASL_SSL
+      KAFKA_CLUSTERS_0_PROPERTIES_SASL_MECHANISM: SCRAM-SHA-256
+      KAFKA_CLUSTERS_0_PROPERTIES_SASL_JAAS_CONFIG: >
+        org.apache.kafka.common.security.scram.ScramLoginModule required
+        username="admin" password="admin-secret";
+      KAFKA_CLUSTERS_0_SSL_TRUSTSTORELOCATION: /opt/ssl/kafka.truststore.jks
+      KAFKA_CLUSTERS_0_SSL_TRUSTSTOREPASSWORD: vroumcpt-cert-password
+    volumes:
+      - ./config/ssl:/opt/ssl:ro
+
+  generator:
+    build: ./generator
+    container_name: vroumcpt-generator-secure
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    volumes:
+      - ./config/ssl:/opt/ssl:ro
+    command:
+      - --kafka-broker
+      - kafka:9092
+      - --rate
+      - "5"
+      - --error-vehicle-pct
+      - "0.4"
+      - --high-error-rate
+      - "0.7"
+      - --security-protocol
+      - SASL_SSL
+      - --sasl-mechanism
+      - SCRAM-SHA-256
+      - --sasl-username
+      - generator
+      - --sasl-password
+      - generator-secret
+      - --ssl-cafile
+      - /opt/ssl/ca.crt
+    restart: on-failure
+
+  spark-streaming:
+    build: ./streaming
+    container_name: vroumcpt-spark-secure
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    volumes:
+      - ./config/ssl:/opt/ssl:ro
+      - ./output:/app/output
+      - spark_secure_checkpoints:/tmp/vroumcpt-checkpoints
+    command:
+      - --source
+      - kafka
+      - --kafka-broker
+      - kafka:9092
+      - --sink
+      - kafka
+      - --group-id
+      - spark-streaming
+      - --window-duration
+      - "30 seconds"
+      - --trigger-interval
+      - "10 seconds"
+      - --kafka-security-protocol
+      - SASL_SSL
+      - --kafka-sasl-mechanism
+      - SCRAM-SHA-256
+      - --kafka-sasl-jaas-config
+      - >-
+        org.apache.kafka.common.security.scram.ScramLoginModule required
+        username="spark" password="spark-secret";
+      - --ssl-truststore-location
+      - /opt/ssl/kafka.truststore.jks
+      - --ssl-truststore-password
+      - vroumcpt-cert-password
+    restart: on-failure
+
+volumes:
+  kafka_secure_data:
+  spark_secure_checkpoints:

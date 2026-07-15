@@ -1,0 +1,39 @@
+# macOS
+.DS_Store
+
+# Python caches and build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+*.egg-info/
+
+# Python virtual environments
+.venv/
+venv/
+env/
+bin/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+config/ssl/
+*.jks
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Generated data and Spark outputs
+output/
+*.log
+
+# IDE files
+.idea/
+.vscode/
+
