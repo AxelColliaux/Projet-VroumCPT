@@ -42,8 +42,11 @@ an external secret manager instead of environment variables.
 | `admin`     | Full access (topic management, ACL mgmt) |
 | `generator` | Write to `vehicle-states`               |
 | `spark`     | Read from `vehicle-states`, write to `alerts` |
+| `broker`    | Internal broker communication (super user) |
+| `controller`| Internal KRaft control plane (super user) |
 
-ACLs are enforced by Kafka's `AclAuthorizer`. The principle of least privilege is
+ACLs are enforced by Kafka's KRaft `StandardAuthorizer`. Access is denied when no
+matching ACL exists. The principle of least privilege is
 applied: the generator cannot read; Spark cannot modify topic configuration.
 
 SCRAM-SHA-256 was chosen over PLAIN because:
@@ -59,9 +62,9 @@ certificates signed by your organization's CA or a public CA (Let's Encrypt, etc
 The truststore (`kafka.truststore.jks`) is distributed to clients so they can verify
 the broker's identity and prevent man-in-the-middle attacks.
 
-`ssl.endpoint.identification.algorithm` is set to empty in the dev client properties
-to allow hostname `kafka` (Docker internal DNS). In production, set it to `https`
-and ensure the certificate CN matches the broker's FQDN.
+Hostname verification is enabled with `ssl.endpoint.identification.algorithm=https`.
+The demo broker certificate contains the SAN entries `kafka` (Docker internal DNS)
+and `localhost`. In production, replace them with the broker's actual FQDN.
 
 ### Spark Security
 
@@ -119,7 +122,7 @@ docker compose -f docker-compose.secure.yml exec kafka \
 # 5. Authenticated access succeeds
 docker compose -f docker-compose.secure.yml exec kafka \
     kafka-topics.sh --bootstrap-server localhost:9092 \
-    --command-config /bitnami/kafka/config/ssl/client-admin.properties \
+    --command-config /opt/ssl/client-admin.properties \
     --list
 ```
 

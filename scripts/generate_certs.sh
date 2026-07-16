@@ -43,17 +43,27 @@ keytool -genkey -noprompt \
     -alias kafka-broker \
     -dname "CN=${CN}, O=VroumCPT, L=Paris, C=FR" \
     -keystore kafka.keystore.jks \
+    -storetype JKS \
     -keyalg RSA \
     -keysize 4096 \
     -validity "$VALIDITY_DAYS" \
     -storepass "$CERT_PASSWORD" \
-    -keypass "$CERT_PASSWORD"
+    -keypass "$CERT_PASSWORD" \
+    -ext "SAN=DNS:kafka,DNS:localhost"
 
 keytool -keystore kafka.keystore.jks \
+    -storetype JKS \
     -alias kafka-broker \
     -certreq \
     -file kafka.csr \
-    -storepass "$CERT_PASSWORD"
+    -storepass "$CERT_PASSWORD" \
+    -ext "SAN=DNS:kafka,DNS:localhost"
+
+cat > kafka-cert.ext <<EOF
+subjectAltName=DNS:kafka,DNS:localhost
+extendedKeyUsage=serverAuth
+keyUsage=digitalSignature,keyEncipherment
+EOF
 
 echo "==> Signing broker certificate with CA..."
 openssl x509 -req \
@@ -61,16 +71,17 @@ openssl x509 -req \
     -in kafka.csr \
     -out kafka-signed.crt \
     -days "$VALIDITY_DAYS" \
-    -CAcreateserial
+    -CAcreateserial \
+    -extfile kafka-cert.ext
 
 echo "==> Importing CA and signed cert into keystore..."
-keytool -keystore kafka.keystore.jks -alias CARoot -import -file ca.crt \
+keytool -keystore kafka.keystore.jks -storetype JKS -alias CARoot -import -file ca.crt \
     -storepass "$CERT_PASSWORD" -noprompt
-keytool -keystore kafka.keystore.jks -alias kafka-broker -import -file kafka-signed.crt \
+keytool -keystore kafka.keystore.jks -storetype JKS -alias kafka-broker -import -file kafka-signed.crt \
     -storepass "$CERT_PASSWORD" -noprompt
 
 echo "==> Creating truststore..."
-keytool -keystore kafka.truststore.jks -alias CARoot -import -file ca.crt \
+keytool -keystore kafka.truststore.jks -storetype JKS -alias CARoot -import -file ca.crt \
     -storepass "$CERT_PASSWORD" -noprompt
 
 echo "==> Writing client properties files..."
@@ -80,9 +91,9 @@ security.protocol=SASL_SSL
 sasl.mechanism=SCRAM-SHA-256
 sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required \
     username="admin" password="${ADMIN_PASSWORD}";
-ssl.truststore.location=${SSL_DIR}/kafka.truststore.jks
+ssl.truststore.location=/opt/ssl/kafka.truststore.jks
 ssl.truststore.password=${CERT_PASSWORD}
-ssl.endpoint.identification.algorithm=
+ssl.endpoint.identification.algorithm=https
 EOF
 
 cat > client-generator.properties <<EOF
@@ -90,9 +101,9 @@ security.protocol=SASL_SSL
 sasl.mechanism=SCRAM-SHA-256
 sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required \
     username="generator" password="${GENERATOR_PASSWORD}";
-ssl.truststore.location=${SSL_DIR}/kafka.truststore.jks
+ssl.truststore.location=/opt/ssl/kafka.truststore.jks
 ssl.truststore.password=${CERT_PASSWORD}
-ssl.endpoint.identification.algorithm=
+ssl.endpoint.identification.algorithm=https
 EOF
 
 cat > client-spark.properties <<EOF
@@ -100,13 +111,19 @@ security.protocol=SASL_SSL
 sasl.mechanism=SCRAM-SHA-256
 sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required \
     username="spark" password="${SPARK_PASSWORD}";
-ssl.truststore.location=${SSL_DIR}/kafka.truststore.jks
+ssl.truststore.location=/opt/ssl/kafka.truststore.jks
 ssl.truststore.password=${CERT_PASSWORD}
-ssl.endpoint.identification.algorithm=
+ssl.endpoint.identification.algorithm=https
 EOF
 
+# Client property files contain credentials; keep them readable only by the
+# local user. The CA certificate is public and can remain world-readable.
+chmod 600 kafka.keystore.jks kafka.truststore.jks \
+    client-admin.properties client-generator.properties client-spark.properties
+chmod 644 ca.crt
+
 # Cleanup intermediate files
-rm -f kafka.csr kafka-signed.crt ca.key ca.srl
+rm -f kafka.csr kafka-signed.crt kafka-cert.ext ca.key ca.srl
 
 echo ""
 echo "Done. Certificates generated in: ${SSL_DIR}"
