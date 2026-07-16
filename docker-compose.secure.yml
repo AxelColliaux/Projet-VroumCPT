@@ -20,12 +20,12 @@ services:
 
       # SSL
       KAFKA_TLS_TYPE: JKS
-      KAFKA_CERTIFICATE_PASSWORD: vroumcpt-cert-password
+      KAFKA_CERTIFICATE_PASSWORD: "${KAFKA_CERTIFICATE_PASSWORD:?Set KAFKA_CERTIFICATE_PASSWORD in .env}"
 
       # Pre-create SCRAM users (broker user for inter-broker, app users)
       KAFKA_CFG_SUPER_USERS: User:admin
       KAFKA_CLIENT_USERS: admin,generator,spark
-      KAFKA_CLIENT_PASSWORDS: admin-secret,generator-secret,spark-secret
+      KAFKA_CLIENT_PASSWORDS: "${KAFKA_ADMIN_PASSWORD:?Set KAFKA_ADMIN_PASSWORD in .env},${KAFKA_GENERATOR_PASSWORD:?Set KAFKA_GENERATOR_PASSWORD in .env},${KAFKA_SPARK_PASSWORD:?Set KAFKA_SPARK_PASSWORD in .env}"
 
       KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "false"
     ports:
@@ -104,9 +104,9 @@ services:
       KAFKA_CLUSTERS_0_PROPERTIES_SASL_MECHANISM: SCRAM-SHA-256
       KAFKA_CLUSTERS_0_PROPERTIES_SASL_JAAS_CONFIG: >
         org.apache.kafka.common.security.scram.ScramLoginModule required
-        username="admin" password="admin-secret";
+        username="admin" password="${KAFKA_ADMIN_PASSWORD:?Set KAFKA_ADMIN_PASSWORD in .env}";
       KAFKA_CLUSTERS_0_SSL_TRUSTSTORELOCATION: /opt/ssl/kafka.truststore.jks
-      KAFKA_CLUSTERS_0_SSL_TRUSTSTOREPASSWORD: vroumcpt-cert-password
+      KAFKA_CLUSTERS_0_SSL_TRUSTSTOREPASSWORD: "${KAFKA_CERTIFICATE_PASSWORD:?Set KAFKA_CERTIFICATE_PASSWORD in .env}"
     volumes:
       - ./config/ssl:/opt/ssl:ro
 
@@ -134,7 +134,7 @@ services:
       - --sasl-username
       - generator
       - --sasl-password
-      - generator-secret
+      - "${KAFKA_GENERATOR_PASSWORD:?Set KAFKA_GENERATOR_PASSWORD in .env}"
       - --ssl-cafile
       - /opt/ssl/ca.crt
     restart: on-failure
@@ -169,11 +169,11 @@ services:
       - --kafka-sasl-jaas-config
       - >-
         org.apache.kafka.common.security.scram.ScramLoginModule required
-        username="spark" password="spark-secret";
+        username="spark" password="${KAFKA_SPARK_PASSWORD:?Set KAFKA_SPARK_PASSWORD in .env}";
       - --ssl-truststore-location
       - /opt/ssl/kafka.truststore.jks
       - --ssl-truststore-password
-      - vroumcpt-cert-password
+      - "${KAFKA_CERTIFICATE_PASSWORD:?Set KAFKA_CERTIFICATE_PASSWORD in .env}"
     restart: on-failure
 
 volumes:

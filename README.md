@@ -102,10 +102,13 @@ Il suffit ensuite de repasser le fichier au job streaming avec
 ## Mode sécurisé
 
 ```bash
-# 1. Générer les certificats TLS et les keystores (crée config/ssl/)
+# 1. Créer le fichier local de secrets et remplacer ses valeurs
+cp .env.example .env
+
+# 2. Générer les certificats TLS et les keystores (crée config/ssl/)
 ./scripts/generate_certs.sh
 
-# 2. Démarrer la stack sécurisée (SASL/SCRAM + TLS, ACLs, générateur + Spark)
+# 3. Démarrer la stack sécurisée (SASL/SCRAM + TLS, ACLs, générateur + Spark)
 docker compose -f docker-compose.secure.yml up -d
 ```
 

@@ -97,7 +97,7 @@ python generator/generator.py \
     --kafka-broker kafka:9092 \
     --security-protocol SASL_SSL \
     --sasl-username generator \
-    --sasl-password generator-secret \
+    --sasl-password "$KAFKA_GENERATOR_PASSWORD" \
     --ssl-cafile config/ssl/ca.crt \
     --rate 10
 ```

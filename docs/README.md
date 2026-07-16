@@ -122,6 +122,7 @@ spark-submit streaming/streaming_analysis.py \
 See [security.md](security.md) for full setup instructions.
 
 ```bash
+cp .env.example .env
 ./scripts/generate_certs.sh
 docker compose -f docker-compose.secure.yml up -d
 ```

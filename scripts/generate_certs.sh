@@ -12,8 +12,22 @@
 
 set -euo pipefail
 
-SSL_DIR="$(cd "$(dirname "$0")/.." && pwd)/config/ssl"
-CERT_PASSWORD="vroumcpt-cert-password"
+PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Load local secrets when the script is run directly. Docker Compose also reads
+# this file automatically. The file is ignored by Git.
+if [[ -f "${PROJECT_ROOT}/.env" ]]; then
+    set -a
+    # shellcheck disable=SC1091
+    source "${PROJECT_ROOT}/.env"
+    set +a
+fi
+
+CERT_PASSWORD="${KAFKA_CERTIFICATE_PASSWORD:?Set KAFKA_CERTIFICATE_PASSWORD in .env}"
+ADMIN_PASSWORD="${KAFKA_ADMIN_PASSWORD:?Set KAFKA_ADMIN_PASSWORD in .env}"
+GENERATOR_PASSWORD="${KAFKA_GENERATOR_PASSWORD:?Set KAFKA_GENERATOR_PASSWORD in .env}"
+SPARK_PASSWORD="${KAFKA_SPARK_PASSWORD:?Set KAFKA_SPARK_PASSWORD in .env}"
+SSL_DIR="${PROJECT_ROOT}/config/ssl"
 VALIDITY_DAYS=3650
 CN="kafka"
 
@@ -65,7 +79,7 @@ cat > client-admin.properties <<EOF
 security.protocol=SASL_SSL
 sasl.mechanism=SCRAM-SHA-256
 sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required \
-    username="admin" password="admin-secret";
+    username="admin" password="${ADMIN_PASSWORD}";
 ssl.truststore.location=${SSL_DIR}/kafka.truststore.jks
 ssl.truststore.password=${CERT_PASSWORD}
 ssl.endpoint.identification.algorithm=
@@ -75,7 +89,7 @@ cat > client-generator.properties <<EOF
 security.protocol=SASL_SSL
 sasl.mechanism=SCRAM-SHA-256
 sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required \
-    username="generator" password="generator-secret";
+    username="generator" password="${GENERATOR_PASSWORD}";
 ssl.truststore.location=${SSL_DIR}/kafka.truststore.jks
 ssl.truststore.password=${CERT_PASSWORD}
 ssl.endpoint.identification.algorithm=
@@ -85,7 +99,7 @@ cat > client-spark.properties <<EOF
 security.protocol=SASL_SSL
 sasl.mechanism=SCRAM-SHA-256
 sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required \
-    username="spark" password="spark-secret";
+    username="spark" password="${SPARK_PASSWORD}";
 ssl.truststore.location=${SSL_DIR}/kafka.truststore.jks
 ssl.truststore.password=${CERT_PASSWORD}
 ssl.endpoint.identification.algorithm=

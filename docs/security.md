@@ -32,9 +32,10 @@ Mitigations:
 
 ### Authentication: SASL/SCRAM-SHA-256
 
-Each client (generator, Spark) authenticates with a dedicated username and password
-stored in Kafka's internal credential store (not in config files or environment variables
-visible in `docker inspect`).
+Each client (generator, Spark) authenticates with a dedicated username and password.
+Local demo credentials are loaded from the Git-ignored `.env` file and injected into
+the containers by Docker Compose. Production deployments should use Docker secrets or
+an external secret manager instead of environment variables.
 
 | User        | Permissions                              |
 |-------------|------------------------------------------|
@@ -101,18 +102,21 @@ production deployment with real vehicle data.
 ## Setting Up the Secure Environment
 
 ```bash
-# 1. Generate TLS certificates and keystores
+# 1. Create the local secrets file and replace every placeholder
+cp .env.example .env
+
+# 2. Generate TLS certificates and keystores
 ./scripts/generate_certs.sh
 
-# 2. Start secure Kafka
+# 3. Start secure Kafka
 docker compose -f docker-compose.secure.yml up -d
 
-# 3. Verify: unauthenticated access must be rejected
+# 4. Verify: unauthenticated access must be rejected
 docker compose -f docker-compose.secure.yml exec kafka \
     kafka-topics.sh --bootstrap-server localhost:9092 --list
 # Expected: authentication error
 
-# 4. Authenticated access succeeds
+# 5. Authenticated access succeeds
 docker compose -f docker-compose.secure.yml exec kafka \
     kafka-topics.sh --bootstrap-server localhost:9092 \
     --command-config /bitnami/kafka/config/ssl/client-admin.properties \
